@@ -8,4 +8,7 @@ cleanup() {
   /root/gpufree-data/conda-envs/robodojo-runtime/bin/python "$PROJECT_ROOT/baseline/stop.py" || true
 }
 trap cleanup EXIT INT TERM
-/root/gpufree-data/conda-envs/robodojo-runtime/bin/python "$PROJECT_ROOT/baseline/launch.py" "$@"
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONUNBUFFERED=1
+setsid /root/gpufree-data/conda-envs/rpent-qwen/bin/python "$PROJECT_ROOT/baseline/rpent_launch.py" "$@" &
+LAUNCHER_PID=$!
+wait "$LAUNCHER_PID"

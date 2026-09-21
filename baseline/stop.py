@@ -39,7 +39,8 @@ def cleanup(run):
     if not manifest.exists():
         return
     records = json.loads(manifest.read_text())
-    targets = [r for r in records if identity(r['pid']) == r['start_ticks'] or group_owned(r, run)]
+    targets = [r for r in records if r['pid'] != os.getpid() and
+               (identity(r['pid']) == r['start_ticks'] or group_owned(r, run))]
     for r in reversed(targets):
         try:
             if r['role'] == 'qwen' and identity(r['pid']) == r['start_ticks']:
