@@ -132,4 +132,3 @@ rpent_result.json, simulator.json, summary.json, timeline.md, stdout.log,
 video.mp4. Runs/models/assets/logs/videos are excluded from Git.
 
 **RAW UNRESTRICTED RPENT BASELINE COMPLETED**
-
