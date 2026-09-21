@@ -30,7 +30,7 @@ class RobotAgentLoop(ApiAgentLoop):
         names = {t['name'] for t in toolkit.get_tools_spec()}
         return Agent(self._model, instructions=system_prompt,
             tools=[t for t in _build_tools(toolkit) if t.name in names],
-            model_settings={'max_tokens': self._max_tokens},
+            model_settings={},
             capabilities=[Thinking(effort='high'), ProcessHistory(processor=_prune_history_images)])
 
 

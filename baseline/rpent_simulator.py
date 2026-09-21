@@ -81,8 +81,9 @@ def main():
             buf = io.BytesIO(); panel.save(buf, format='PNG')
             return {'_image_bytes': buf.getvalue(), 'observation_timestamp': timestamp(),
                     'env_steps': int(env.take_action_cnt[0])}
-        conn.send({'instruction': obs['instruction'], **public_observation()})
-        event(run, 'environment_ready', task=task, instruction=obs['instruction'])
+        conn.send({'instruction': obs['instruction'], 'official_horizon': int(env.step_lim),
+                   **public_observation()})
+        event(run, 'environment_ready', task=task, instruction=obs['instruction'], official_horizon=int(env.step_lim))
         generation = 0
         while True:
             request = conn.recv()
@@ -95,7 +96,7 @@ def main():
                 raise ValueError('Invalid robot operation')
             generation += 1
             window = min(cfg['tool']['high_level_window'],
-                         cfg['environment']['max_steps'] - env.take_action_cnt[0])
+                         env.step_lim - env.take_action_cnt[0])
             instruction = arguments.get('instruction')
             if name == 'execute_subgoal':
                 ack = env.model_client.call(func_name='begin_subgoal', obs={
@@ -133,12 +134,17 @@ def main():
             feedback = dict(public_observation(), executed_env_steps=executed_total,
                 OpenWAM_inference_count=inferences, OpenWAM_inference_latency=inference_time,
                 stale_actions_dropped=stale)
-            conn.send(feedback)
+            # Lifecycle control is separate from policy-visible feedback.
+            ended = bool(env.is_episode_end())
+            conn.send({'feedback': feedback, 'lifecycle_ended': ended})
+            if ended:
+                result['termination_reason'] = ('official_success' if env.success[0] else
+                    'official_horizon' if env.take_action_cnt[0] >= env.step_lim else 'official_environment_failure')
             event(run, 'observation_returned', generation=generation, env_step=env.take_action_cnt[0],
                   client_chunk_empty=True, subgoal=instruction)
         reward = env.reward_manager.get_reward(final_check=True)[0]
         result.update(success=bool(reward > 1-1e-3), env_steps=int(env.take_action_cnt[0]),
-            official_ended=bool(env.is_episode_end()))
+            official_ended=bool(env.is_episode_end()), official_horizon=int(env.step_lim))
     except Exception as exc:
         result['error'] = repr(exc); traceback.print_exc()
         event(run, 'simulator_error', traceback=traceback.format_exc())

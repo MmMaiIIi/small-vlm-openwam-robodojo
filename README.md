@@ -44,8 +44,10 @@ process groups. It never installs packages or downloads models/assets. `./stop.s
 stops this project's active run; `./stop.sh --run /absolute/path/to/run` targets an
 explicit run. A lock prevents overlapping launches from this project.
 
-Config: `configs/rpent_qwen2b_openwam.yaml`. Design: [RPent audit](docs/RPENT_DESIGN.md).
-Actual outcome and blocker: [RPent baseline report](docs/RPENT_BASELINE_REPORT.md).
+Default config: `configs/rpent_qwen2b_openwam_unrestricted.yaml`.
+Current protocol: [unrestricted local generation](docs/RPENT_UNRESTRICTED_PROTOCOL.md).
+Latest actual result: [18-turn official-horizon run](docs/RPENT_UNRESTRICTED_REPORT.md).
+Earlier 6144-token result: [RPent baseline report](docs/RPENT_BASELINE_REPORT.md).
 New adapter unit tests use `conda-envs/rpent-qwen/bin/python -m unittest discover
 -s tests -p test_rpent_adapter.py -v`. Historical actor/chunk tests use the OpenWAM
 environment; the two environments intentionally have different dependencies.
@@ -55,9 +57,10 @@ chunk accounting, events, 1 Hz GPU samples, three-camera video, stdout, summary,
 and a readable timeline. Planner calls use RGB, the original instruction,
 RPent history and non-privileged tool feedback. Success labels remain evaluator-only.
 
-Default budget is 8 RPent turns and 512 control steps. This is a raw bounded
-interface baseline, not a full-horizon benchmark or a statistically meaningful
-success-rate evaluation. A complete bounded episode can legitimately fail the task.
+Current generation uses the checkpoint-native remaining context, no planner
+wall-clock deadline, and RoboDojo's actual task horizon. RPent's integer turn
+sentinel is derived from that horizon and cannot precede normal step termination.
+Only fill_pen_holder / seed 0 is enabled. This is not a success-rate sweep.
 
 Historical custom-loop result: [high-budget retry report](docs/BASELINE_HIGH_BUDGET_REPORT.md).
 With the authorized 6144-token / 180-second planner budget, two valid decisions

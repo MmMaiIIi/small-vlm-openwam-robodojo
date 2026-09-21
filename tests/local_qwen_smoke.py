@@ -46,7 +46,7 @@ if __name__ == '__main__':
     sys.addaudithook(forbid_network)
     root = Path(__file__).resolve().parents[1]
     run = Path(sys.argv[1]); run.mkdir(parents=True, exist_ok=True)
-    cfg = yaml.safe_load((root / 'configs/rpent_qwen2b_openwam.yaml').read_text())
+    cfg = yaml.safe_load((root / 'configs/rpent_qwen2b_openwam_unrestricted.yaml').read_text())
     before = listeners()
     model = LocalQwenPlanner(cfg['planner'], run)
     robot = MockRobot()
@@ -56,7 +56,7 @@ if __name__ == '__main__':
         {'type': 'text', 'text': 'Describe the shape and color in this image.'}]}])
     sink = NullDashboardEventSink()
     toolkit = RobotToolkit(robot, run, sink)
-    loop = RobotAgentLoop(model, max_tokens=cfg['planner']['max_generation_tokens'],
+    loop = RobotAgentLoop(model, max_tokens=None,
         reasoning_effort='high', dashboard_events=sink)
     # Interface fixture only, not a robotic task plan or replayed model answer.
     result = loop.solve(system_prompt='This is a mock tool-interface test, not a robotics task. '

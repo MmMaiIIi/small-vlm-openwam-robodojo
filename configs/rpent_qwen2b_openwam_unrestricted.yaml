@@ -1,0 +1,35 @@
+planner:
+  backend: local_qwen_transformers
+  model_path: /root/gpufree-data/models/Qwen/Qwen3.5-2B
+  reasoning: true
+  context_source: checkpoint_native
+  context_margin: 1
+  dtype: bfloat16
+  temperature: 0.0
+  progress_tokens: 512
+  progress_seconds: 10
+rpent:
+  turns_source: official_horizon_plus_one
+  history_policy: upstream_prune_history_images
+actor:
+  checkpoint: /root/gpufree-data/models/OpenWAM/OpenWAM-Alpha-Sim-RoboDojo
+  replan_steps: 32
+  predicted_chunk_length: 32
+  timeout: null
+tool:
+  high_level_window: 64
+environment:
+  task: fill_pen_holder
+  seed: 0
+  horizon_source: official_env_step_lim
+  env_cfg_type: arx_x5
+  control_frequency: 25
+logging:
+  enabled: true
+  gpu_sample_seconds: 1
+  video_fps: 25
+paths:
+  robodojo: /root/gpufree-data/RoboDojo
+  runtime_python: /root/gpufree-data/conda-envs/robodojo-runtime/bin/python
+  actor_python: /root/gpufree-data/conda-envs/openwam/bin/python
+  planner_python: /root/gpufree-data/conda-envs/rpent-qwen/bin/python

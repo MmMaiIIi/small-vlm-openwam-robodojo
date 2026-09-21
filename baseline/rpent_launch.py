@@ -21,25 +21,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RobotConnection:
-    def __init__(self, conn, timeout):
-        self.conn, self.timeout = conn, timeout
+    def __init__(self, conn):
+        self.conn, self.ended = conn, False
+
+    def before_planner(self):
+        if self.ended:
+            # RPent catches this at its normal model-request boundary. No
+            # benchmark success/reward/end flag is inserted into model history.
+            raise RuntimeError('OFFICIAL_EPISODE_ENDED')
 
     def call(self, name, arguments):
         self.conn.send({'tool': name, 'arguments': arguments})
-        if not self.conn.poll(self.timeout):
-            raise TimeoutError('Robot tool IPC timeout')
-        return self.conn.recv()
+        response = self.conn.recv()
+        if 'feedback' in response:
+            self.ended = bool(response['lifecycle_ended'])
+            return response['feedback']
+        return response
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--task', choices=['fill_pen_holder'], default='fill_pen_holder')
     parser.add_argument('--seed', type=int, choices=[0], default=0)
-    parser.add_argument('--config', default=str(ROOT / 'configs/rpent_qwen2b_openwam.yaml'))
+    parser.add_argument('--config', default=str(ROOT / 'configs/rpent_qwen2b_openwam_unrestricted.yaml'))
     args = parser.parse_args()
     cfg = yaml.safe_load(Path(args.config).read_text())
     cfg['environment'].update(task=args.task, seed=args.seed)
-    run = ROOT / 'runs' / (time.strftime('%Y%m%dT%H%M%S') + '_rpent_' + args.task + '_0')
+    run = ROOT / 'runs' / (time.strftime('%Y%m%dT%H%M%S') + '_rpent_unrestricted_' + args.task + '_0')
     run.mkdir(parents=True); (ROOT / '.active_run').write_text(str(run))
     (run / 'config.yaml').write_text(yaml.safe_dump(cfg, sort_keys=False))
     for name in ('planner.jsonl', 'actor.jsonl', 'tools.jsonl', 'gpu.jsonl', 'events.jsonl', 'stdout.log'):
@@ -104,9 +112,8 @@ def main():
             sock.bind(('127.0.0.1', 0)); actor_port = sock.getsockname()[1]
         spawn('actor', [cfg['paths']['actor_python'], str(ROOT/'baseline/actor_server.py'),
                        '--run', str(run), '--port', str(actor_port)])
-        deadline = time.monotonic() + cfg['runtime']['startup_timeout']
         while not any(e['event'] == 'actor_socket_ready' for e in read_jsonl(run/'events.jsonl')):
-            if children['actor'].poll() is not None or time.monotonic() >= deadline:
+            if children['actor'].poll() is not None:
                 raise RuntimeError('OpenWAM startup failed')
             time.sleep(1)
         conn, worker_conn = Pipe(duplex=True)  # anonymous AF_UNIX robot IPC, not a model server
@@ -114,32 +121,36 @@ def main():
             '--run', str(run), '--actor-port', str(actor_port), '--fd', str(worker_conn.fileno())],
             runtime=True, pass_fds=(worker_conn.fileno(),))
         worker_conn.close()
-        if not conn.poll(cfg['runtime']['startup_timeout']):
-            raise TimeoutError('Isaac initialization timeout')
         initial = conn.recv()
-        driver = RobotConnection(conn, cfg['runtime']['robot_tool_timeout'])
+        driver = RobotConnection(conn)
+        model.before_request = driver.before_planner
         sink = NullDashboardEventSink()
         toolkit = RobotToolkit(driver, run, sink)
-        loop = RobotAgentLoop(model, max_tokens=cfg['planner']['max_generation_tokens'],
+        loop = RobotAgentLoop(model, max_tokens=None,
                              reasoning_effort='high', dashboard_events=sink)
+        max_turns = int(initial['official_horizon']) + 1
+        event(run, 'official_limits', official_horizon=initial['official_horizon'],
+              rpent_sentinel_max_turns=max_turns, native_context_limit=model.native_context_limit)
         episode_start = time.monotonic()
         event(run, 'coexistence_before_episode', memory_mib=int(subprocess.check_output(
             ['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'], text=True)))
         result = loop.solve(system_prompt=RULES,
             user_message=[initial['instruction'], BinaryContent(initial['_image_bytes'], media_type='image/png')],
-            toolkit=toolkit, max_turns=cfg['rpent']['max_turns'])
+            toolkit=toolkit, max_turns=max_turns)
         summary.update(rpent_stats=result.stats, planner_error=result.error,
-            finish=result.finish_result, completed=result.error is None, model_load_count=model.load_count)
+            finish=result.finish_result, completed=result.error is None or driver.ended,
+            model_load_count=model.load_count, native_context_limit=model.native_context_limit,
+            official_ended=driver.ended)
         (run/'rpent_result.json').write_text(json.dumps({'messages': result.messages,
             'stats': result.stats, 'error': result.error, 'finish': result.finish_result}, default=str, indent=2))
         conn.send({'tool': 'close', 'arguments': {}})
-        children['isaac'].wait(timeout=cfg['runtime']['shutdown_timeout'])
+        children['isaac'].wait()
     except BaseException as exc:
         summary['error'] = repr(exc); traceback.print_exc()
         if conn is not None:
             try:
                 conn.send({'tool': 'close', 'arguments': {}})
-                children['isaac'].wait(timeout=cfg['runtime']['shutdown_timeout'])
+                children['isaac'].wait()
             except Exception:
                 pass
     finally:
@@ -161,8 +172,11 @@ def main():
             peak_VRAM_MiB=max((g['memory_used_mib'] for g in gpu if 'memory_used_mib' in g), default=None),
             OOM='out of memory' in (run/'stdout.log').read_text(errors='replace').lower())
         failure = str(summary.get('error') or summary.get('planner_error') or sim.get('error') or '')
-        summary['failure_taxonomy'] = ('TIMING / PLANNER_DELIBERATION' if any(x.get('timeout') or x.get('generation_limit_hit') for x in p)
+        summary['failure_taxonomy'] = ('PLANNER_DELIBERATION_CONTEXT_EXHAUSTED' if any(x.get('generation_limit_hit') for x in p)
+            else 'CUDA_OOM' if summary['OOM'] else None if summary.get('official_ended')
             else 'INTERFACE' if failure else 'UNKNOWN' if not summary['success'] else None)
+        summary['termination_reason'] = (sim.get('termination_reason') if summary.get('official_ended') else
+            'planner_finish' if summary.get('finish') else summary['failure_taxonomy'])
         summary['pipeline_ready'] = bool(summary['completed'] and sim.get('clean_exit') and not sim.get('error')
             and len(p) >= 2 and len(a) >= 2 and sim.get('env_steps', 0) > 64 and not summary['OOM'])
         summary['end_to_end_wall_time'] = time.monotonic() - started
