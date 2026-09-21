@@ -1,0 +1,39 @@
+planner:
+  model: Qwen3.5-2B
+  model_path: /root/gpufree-data/models/Qwen/Qwen3.5-2B
+  reasoning: true
+  context_length: 8192
+  max_tokens: 6144
+  timeout: 180
+  temperature: 0.0
+  history_length: 3
+  invalid_retries: 1
+  kv_cache_bytes: 1073741824
+  gpu_memory_utilization: 0.35
+actor:
+  checkpoint: /root/gpufree-data/models/OpenWAM/OpenWAM-Alpha-Sim-RoboDojo
+  replan_steps: 32
+  predicted_chunk_length: 32
+  timeout: 300
+harness:
+  # 2 native 32-action chunks at 25 Hz = 2.56 simulated seconds.
+  high_level_window: 64
+  max_planner_calls: 8
+  max_episode_steps: 512
+  startup_timeout: 900
+  episode_timeout: 7200
+environment:
+  task: fill_pen_holder
+  seed: 0
+  env_cfg_type: arx_x5
+  control_frequency: 25
+  num_envs: 1
+logging:
+  enabled: true
+  gpu_sample_seconds: 1
+  video_fps: 25
+paths:
+  robodojo: /root/gpufree-data/RoboDojo
+  runtime_python: /root/gpufree-data/conda-envs/robodojo-runtime/bin/python
+  actor_python: /root/gpufree-data/conda-envs/openwam/bin/python
+  qwen_python: /root/gpufree-data/conda-envs/qwen/bin/python

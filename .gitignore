@@ -58,3 +58,5 @@ core.*
 
 # System
 .DS_Store
+.active_run
+.baseline.lock
