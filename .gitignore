@@ -1,0 +1,60 @@
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+credentials*
+secrets*
+token*
+auth*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Environments
+.venv/
+venv/
+env/
+conda-envs/
+
+# Models and caches
+models/
+huggingface/
+.cache/
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# RoboDojo / assets
+Assets/
+assets/
+
+# Experiment outputs
+runs/
+logs/
+outputs/
+eval_result/
+videos/
+*.mp4
+*.avi
+
+# Large temporary files
+tmp/
+temp/
+*.log
+core
+core.*
+
+# System
+.DS_Store
